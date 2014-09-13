@@ -51,7 +51,7 @@ JSONEditor.defaults.themes.bootstrap3 = JSONEditor.AbstractTheme.extend({
       group.style.marginTop = '0';
       group.appendChild(label);
       group.appendChild(input);
-  } 
+    }
     else {
       group.className += ' form-group';
       if(label) {
