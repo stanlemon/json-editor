@@ -5320,6 +5320,135 @@ JSONEditor.defaults.editors.upload = JSONEditor.AbstractEditor.extend({
   }
 });
 
+JSONEditor.defaults.editors.boolean = JSONEditor.AbstractEditor.extend({
+  getDefault: function() {
+    return this.schema.default || false;
+  },
+  register: function() {
+    this._super();
+    if(!this.input) return;
+    this.input.setAttribute('name',this.formname);
+  },
+  unregister: function() {
+    this._super();
+    if(!this.input) return;
+    this.input.removeAttribute('name');
+  },
+  setValue: function(value,initial,from_template) {
+    var self = this;
+
+    this.input.checked = !!value;
+
+    var changed = (from_template || (this.getValue() !== value));
+    this.refreshValue();
+    if(changed) {
+      if(self.parent) self.parent.onChildEditorChange(self);
+      else self.jsoneditor.onChange();
+    }
+
+    this.watch_listener();
+    this.jsoneditor.notifyWatchers(this.path);
+  },
+  removeProperty: function() {
+    this._super();
+    this.input.style.display = 'none';
+    if(this.description) this.description.style.display = 'none';
+    this.theme.disableLabel(this.label);
+  },
+  addProperty: function() {
+    this._super();
+    this.input.style.display = '';
+    if(this.description) this.description.style.display = '';
+    this.theme.enableLabel(this.label);
+  },
+  build: function() {
+    var self = this, i;
+    if(!this.getOption('compact',false)) this.header = this.label = this.theme.getFormInputLabel(this.getTitle());
+    if(this.schema.description) this.description = this.theme.getFormInputDescription(this.schema.description);
+
+    this.input_type = 'checkbox';
+    this.input = this.theme.getCheckbox();
+
+    if(this.getOption('compact')) this.container.setAttribute('class',this.container.getAttribute('class')+' compact');
+
+    if(this.schema.readOnly || this.schema.readonly) {
+      this.always_disabled = true;
+      this.input.disabled = true;
+    }
+
+    this.input.addEventListener('change',function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      this.value = this.checked;
+
+      self.refreshValue();
+      self.watch_listener();
+      self.jsoneditor.notifyWatchers(self.path);
+      if(self.parent) self.parent.onChildEditorChange(self);
+      else self.jsoneditor.onChange();
+    });
+
+    this.control = this.getTheme().getFormControl(this.label, this.input, this.description);
+    this.container.appendChild(this.control);
+
+    // Any special formatting that needs to happen after the input is added to the dom
+    requestAnimationFrame(function() {
+      self.afterInputReady();
+    });
+
+    this.register();
+    this.refreshValue();
+    this.jsoneditor.notifyWatchers(this.path);
+  },
+  enable: function() {
+    if(!this.always_disabled) {
+      this.input.disabled = false;
+    }
+    this._super();
+  },
+  disable: function() {
+    this.input.disabled = true;
+    this._super();
+  },
+  afterInputReady: function() {
+    var self = this;
+    self.theme.afterInputReady(self.input);
+  },
+  refreshValue: function() {
+    this.value = this.input.checked;
+    this.serialized = (this.value ? '1' : '');
+  },
+  destroy: function() {
+    if(this.input.parentNode) this.input.parentNode.removeChild(this.input);
+    if(this.label && this.label.parentNode) this.label.parentNode.removeChild(this.label);
+    if(this.description && this.description.parentNode) this.description.parentNode.removeChild(this.description);
+    this._super();
+  },
+  /**
+   * This is overridden in derivative editors
+   */
+  sanitize: function(value) {
+    return (value ? '1' : '');
+  },
+  showValidationErrors: function(errors) {
+    var self = this;
+
+    var messages = [];
+    $each(errors,function(i,error) {
+      if(error.path === self.path) {
+        messages.push(error.message);
+      }
+    });
+
+    if(messages.length) {
+      this.theme.addInputError(this.input, messages.join('. ')+'.');
+    }
+    else {
+      this.theme.removeInputError(this.input);
+    }
+  }
+});
 JSONEditor.AbstractTheme = Class.extend({
   getContainer: function() {
     return document.createElement('div');
@@ -5475,16 +5604,23 @@ JSONEditor.AbstractTheme = Class.extend({
     
   },
   getFormControl: function(label, input, description) {
-    var el = document.createElement('div');
+    var el = document.createElement('div'), inputFirst = ((input.type === 'checkbox') || (input.type === 'radio'));
     el.className = 'form-control';
+    if (inputFirst) { el.appendChild(input); }
     if(label) el.appendChild(label);
-    if(input.type === 'checkbox') {
-      label.insertBefore(input,label.firstChild);
+    if (!inputFirst) { el.appendChild(input); }
+    if(input.type === 'radio') {
+      var inputId = input.getAttribute('id');
+      if (!inputId && input.getAttribute('name')) {
+        inputId = 'input-' + input.getAttribute('name');
+        if (input.type === 'radio') {
+          inputId += '-' + input.getAttribute('value');
+        }
+        input.setAttribute('id', inputId);
+      }
+      label.setAttribute('for', inputId);
     }
-    else {
-      el.appendChild(input);
-    }
-    
+
     if(description) el.appendChild(description);
     return el;
   },
@@ -5728,6 +5864,7 @@ JSONEditor.defaults.themes.bootstrap2 = JSONEditor.AbstractTheme.extend({
       label.className += ' checkbox';
       label.appendChild(input);
       controls.appendChild(label);
+      controls.appendChild(input);
       controls.style.height = '30px';
     }
     else {
@@ -5840,8 +5977,8 @@ JSONEditor.defaults.themes.bootstrap2 = JSONEditor.AbstractTheme.extend({
 });
 
 JSONEditor.defaults.themes.bootstrap3 = JSONEditor.AbstractTheme.extend({
-  getSelectInput: function(options) {
-    var el = this._super(options);
+  getSelectInput: function(options, titles) {
+    var el = this._super(options, titles);
     el.className += 'form-control';
     //el.style.width = 'auto';
     return el;
@@ -5869,7 +6006,7 @@ JSONEditor.defaults.themes.bootstrap3 = JSONEditor.AbstractTheme.extend({
   },
   getFormInputField: function(type) {
     var el = this._super(type);
-    if(type !== 'checkbox') {
+    if(type !== 'checkbox' && type !== 'radio') {
       el.className += 'form-control';
     }
     return el;
@@ -5877,15 +6014,22 @@ JSONEditor.defaults.themes.bootstrap3 = JSONEditor.AbstractTheme.extend({
   getFormControl: function(label, input, description) {
     var group = document.createElement('div');
 
-    if(label && input.type === 'checkbox') {
-      group.className += ' checkbox';
-      label.appendChild(input);
+    if(label && (input.type === 'checkbox' || (input.type === 'radio'))) {
+      group.className += ' ' + input.type;
+      var inputId = input.getAttribute('id');
+      if (!inputId && input.getAttribute('name')) {
+        inputId = 'input-' + input.getAttribute('name');
+        if (input.type === 'radio') {
+          inputId += '-' + input.getAttribute('value');
+        }
+        input.setAttribute('id', inputId);
+      }
+      label.setAttribute('for', inputId);
       label.style.fontSize = '14px';
       group.style.marginTop = '0';
       group.appendChild(label);
-      input.style.position = 'relative';
-      input.style.cssFloat = 'left';
-    } 
+      group.appendChild(input);
+  } 
     else {
       group.className += ' form-group';
       if(label) {
@@ -6901,12 +7045,6 @@ JSONEditor.defaults.resolvers.unshift(function(schema) {
 JSONEditor.defaults.resolvers.unshift(function(schema) {
   // If the schema is a simple type
   if(typeof schema.type === "string") return schema.type;
-});
-// Use the select editor for all boolean values
-JSONEditor.defaults.resolvers.unshift(function(schema) {
-  if(schema.type === 'boolean') {
-    return "select";
-  }
 });
 // Use the multiple editor for schemas where the `type` is set to "any"
 JSONEditor.defaults.resolvers.unshift(function(schema) {
