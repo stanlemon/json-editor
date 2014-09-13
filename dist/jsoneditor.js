@@ -5363,13 +5363,13 @@ JSONEditor.defaults.editors.boolean = JSONEditor.AbstractEditor.extend({
   },
   build: function() {
     var self = this, i;
-    if(!this.getOption('compact',false)) this.header = this.label = this.theme.getFormInputLabel(this.getTitle());
+    if(!this.options.compact) this.header = this.label = this.theme.getFormInputLabel(this.getTitle());
     if(this.schema.description) this.description = this.theme.getFormInputDescription(this.schema.description);
 
     this.input_type = 'checkbox';
     this.input = this.theme.getCheckbox();
 
-    if(this.getOption('compact')) this.container.setAttribute('class',this.container.getAttribute('class')+' compact');
+    if(this.options.compact) this.container.setAttribute('class',this.container.getAttribute('class')+' compact');
 
     if(this.schema.readOnly || this.schema.readonly) {
       this.always_disabled = true;
@@ -5389,7 +5389,7 @@ JSONEditor.defaults.editors.boolean = JSONEditor.AbstractEditor.extend({
       else self.jsoneditor.onChange();
     });
 
-    this.control = this.getTheme().getFormControl(this.label, this.input, this.description);
+    this.control = this.theme.getFormControl(this.label, this.input, this.description);
     this.container.appendChild(this.control);
 
     // Any special formatting that needs to happen after the input is added to the dom
